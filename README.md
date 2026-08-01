@@ -4,28 +4,35 @@ Thin FastAPI microservice that executes Garena Shell direct top-ups on `termgame
 
 erosterz submits orders outbound (Dynasty pattern); this service owns the termgame HTTP calls, OTP, quantity loops, and optional status callbacks.
 
-**Integration reference (erosterz):** [docs/garena-direct-integration.md](https://github.com/thomasblack168/erosterz/blob/main/docs/garena-direct-integration.md) (in the erosterz repo)
+## Documentation
 
-**Legacy workers (archived):** [Garena-erosterz](https://github.com/thomasblack168/Garena-erosterz) — `_archive/` only; do not run.
+| Doc | Description |
+|-----|-------------|
+| **[docs/README.md](./docs/README.md)** | Documentation index |
+| [Integration](./docs/integration.md) | erosterz ↔ service API, env matrix, webhook, status mapping |
+| [Deploy](./docs/deploy.md) | DigitalOcean Droplet, systemd, nginx, TLS, go-live |
+| [Operations guide (คู่มือ)](./docs/guide.md) | Session export, products, troubleshooting, เพิ่มเกม |
+
+**erosterz reference:** [garena-direct-integration.md](https://github.com/thomasblack168/erosterz/blob/main/docs/garena-direct-integration.md)
+
+**Legacy archive:** [Garena-erosterz](https://github.com/thomasblack168/Garena-erosterz) — `_archive/` only
 
 ---
 
-## Requirements
-
-- Python 3.11+
-- Outbound HTTPS to `termgame.com`
-- Valid Garena Shell merchant session (cookies + headers + TOTP secret) — sent **per order** by erosterz, not stored on the Droplet in v1
-
----
-
-## Setup
+## Quick start (local)
 
 ```bash
-git clone <this-repo-url>
+git clone https://github.com/thomasblack168/garena-service.git
 cd garena-service
-python3 -m venv .venv
-source .venv/bin/activate
+python3 -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
+cp .env.example .env   # edit keys
+export $(grep -v '^#' .env | xargs)
+uvicorn src.main:app --host 0.0.0.0 --port 8099 --reload
+```
+
+```bash
+curl -s -H "Authorization: Bearer $GARENA_SERVICE_API_KEY" http://localhost:8099/v1/health | jq
 ```
 
 ---
@@ -34,122 +41,56 @@ pip install -e ".[dev]"
 
 | Variable | Required | Description |
 |----------|----------|-------------|
-| `GARENA_SERVICE_API_KEY` | yes | Bearer token; must match erosterz admin **Garena API Key** |
-| `EROSTERZ_WEBHOOK_BASE` | no | e.g. `https://erosterz.com` — base URL for optional terminal-state callbacks |
+| `GARENA_SERVICE_API_KEY` | yes | Bearer token — must match erosterz admin **Garena API Key** |
+| `EROSTERZ_WEBHOOK_BASE` | for callbacks | erosterz public origin, e.g. `https://erosterz.com` |
+| `GARENA_WEBHOOK_SECRET` | for callbacks | Must match erosterz admin **Webhook secret** |
+
+See [docs/deploy.md](./docs/deploy.md) for production setup.
 
 ---
 
-## Run locally
+## API summary
 
-```bash
-export GARENA_SERVICE_API_KEY=dev-key
-uvicorn src.main:app --host 0.0.0.0 --port 8099 --reload
-```
-
-Health check:
-
-```bash
-curl -s -H "Authorization: Bearer dev-key" http://localhost:8099/v1/health | jq
-```
-
-Create order (example — use real session from admin):
-
-```bash
-curl -s -X POST http://localhost:8099/v1/orders \
-  -H "Authorization: Bearer dev-key" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "partnerReferenceId": "ORD-TEST-cm123",
-    "gameKey": "rov",
-    "playerId": "1234567890",
-    "itemId": "4587",
-    "quantity": 1,
-    "session": {
-      "cookies": { "mspid2": "…" },
-      "headers": { "User-Agent": "…", "Referer": "https://termgame.com/" },
-      "otpSecret": "BASE32SECRET"
-    }
-  }'
-```
-
-Poll job status:
-
-```bash
-curl -s -H "Authorization: Bearer dev-key" http://localhost:8099/v1/orders/{ref} | jq
-```
-
----
-
-## API (v1)
-
-Base path: `/v1`  
-Auth: `Authorization: Bearer {GARENA_SERVICE_API_KEY}`
+Base: `/v1` · Auth: `Authorization: Bearer {key}`
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `GET` | `/v1/health` | Liveness (no session probe) |
-| `POST` | `/v1/health` | Optional session probe (`session` in body) |
-| `POST` | `/v1/orders` | Enqueue top-up job → `202` |
-| `GET` | `/v1/orders/{ref}` | Job snapshot + progress |
+| `GET` | `/v1/health` | Liveness |
+| `POST` | `/v1/health` | Optional session probe |
+| `POST` | `/v1/orders` | Enqueue top-up → `202` |
+| `GET` | `/v1/orders/{ref}` | Job status + progress |
 
-See erosterz [garena-direct-integration.md §6](https://github.com/thomasblack168/erosterz/blob/main/docs/garena-direct-integration.md) for request/response schemas and status values.
-
-**Idempotency:** duplicate `partnerReferenceId` → `409` with existing `ref`.
+Full contract: [docs/integration.md](./docs/integration.md)
 
 ---
 
-## Games (`games.yaml`)
+## Games
 
-| `gameKey` | Legacy `game_id` | `app_id` | Notes |
-|-----------|------------------|----------|-------|
-| `rov` | 180 | 100055 | Arena of Valor TH |
-| `freefire` | 179 | 100067 | |
-| `deltaforce` | 1713 | 100151 | |
-| `hai` | 1712 | 100153 | |
-| `undraw` | 1714 | 100105 | pay/init uses 100105 |
-
-Add new games here; erosterz `Product.garenaGameKey` must match.
-
----
-
-## Data
-
-Jobs persist in SQLite at `data/jobs.db` (created on first order). v1 is single-process; use a shared store before horizontal scaling.
+Registry in [`games.yaml`](./games.yaml) — `rov`, `freefire`, `deltaforce`, `hai`, `undraw`.  
+erosterz `Product.garenaGameKey` must match `gameKey`.
 
 ---
 
 ## Tests
 
 ```bash
+pip install -e ".[dev]"
 pytest tests/ -v
 ```
-
-Maps termgame error strings → service status (`session_expired`, `invalid_player`, `pack_limit`, etc.).
-
----
-
-## Deploy (DigitalOcean Droplet)
-
-1. Install Python 3.11+, clone this repo, `pip install -e .`
-2. Set `GARENA_SERVICE_API_KEY` and optional `EROSTERZ_WEBHOOK_BASE` in systemd env or `.env`.
-3. Run behind nginx with TLS; **restrict ingress** to erosterz egress IP only.
-4. Point erosterz admin **Garena Direct → Service URL** at `https://your-droplet` (no trailing `/v1` — erosterz client appends it).
-
-**Security:** Rotate every secret that ever appeared in legacy `_archive/` scripts before production. Never log cookies, OTP secret, or full termgame responses.
 
 ---
 
 ## Layout
 
 ```
-games.yaml           # Game registry (app_id, channel_id, …)
+games.yaml
 src/
   main.py            # FastAPI routes
-  worker.py          # Background job loop + optional webhook
+  worker.py          # Background loop + webhook
   store.py           # SQLite job store
-  termgame/
-    topup.py         # pay/init + error mapping
-    otp.py           # TOTP helper
+  termgame/          # pay/init + OTP
 tests/
-  test_topup_errors.py
+docs/                # Deploy, integration, คู่มือ
 ```
+
+Jobs persist in `data/jobs.db` (gitignored). v1 = single instance only.
