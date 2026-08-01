@@ -1,10 +1,12 @@
 # Garena Service
 
-Thin FastAPI microservice that executes Garena Shell direct top-ups on `termgame.com` for [erosterz](https://github.com/erosterz/erosterz).
+Thin FastAPI microservice that executes Garena Shell direct top-ups on `termgame.com` for [erosterz](https://github.com/thomasblack168/erosterz).
 
 erosterz submits orders outbound (Dynasty pattern); this service owns the termgame HTTP calls, OTP, quantity loops, and optional status callbacks.
 
-**Integration reference (erosterz):** [garena-direct-integration.md](../../../Projects/erosterz/docs/garena-direct-integration.md)
+**Integration reference (erosterz):** [docs/garena-direct-integration.md](https://github.com/thomasblack168/erosterz/blob/main/docs/garena-direct-integration.md) (in the erosterz repo)
+
+**Legacy workers (archived):** [Garena-erosterz](https://github.com/thomasblack168/Garena-erosterz) — `_archive/` only; do not run.
 
 ---
 
@@ -19,6 +21,7 @@ erosterz submits orders outbound (Dynasty pattern); this service owns the termga
 ## Setup
 
 ```bash
+git clone <this-repo-url>
 cd garena-service
 python3 -m venv .venv
 source .venv/bin/activate
@@ -89,7 +92,7 @@ Auth: `Authorization: Bearer {GARENA_SERVICE_API_KEY}`
 | `POST` | `/v1/orders` | Enqueue top-up job → `202` |
 | `GET` | `/v1/orders/{ref}` | Job snapshot + progress |
 
-See [garena-direct-integration.md §6](../../../Projects/erosterz/docs/garena-direct-integration.md) for request/response schemas and status values.
+See erosterz [garena-direct-integration.md §6](https://github.com/thomasblack168/erosterz/blob/main/docs/garena-direct-integration.md) for request/response schemas and status values.
 
 **Idempotency:** duplicate `partnerReferenceId` → `409` with existing `ref`.
 
@@ -111,7 +114,7 @@ Add new games here; erosterz `Product.garenaGameKey` must match.
 
 ## Data
 
-Jobs persist in SQLite at `garena-service/data/jobs.db` (created on first order). v1 is single-process; use a shared store before horizontal scaling.
+Jobs persist in SQLite at `data/jobs.db` (created on first order). v1 is single-process; use a shared store before horizontal scaling.
 
 ---
 
@@ -127,29 +130,26 @@ Maps termgame error strings → service status (`session_expired`, `invalid_play
 
 ## Deploy (DigitalOcean Droplet)
 
-1. Install Python 3.11+, clone repo, `pip install -e .` in `garena-service/`.
+1. Install Python 3.11+, clone this repo, `pip install -e .`
 2. Set `GARENA_SERVICE_API_KEY` and optional `EROSTERZ_WEBHOOK_BASE` in systemd env or `.env`.
 3. Run behind nginx with TLS; **restrict ingress** to erosterz egress IP only.
-4. Point erosterz admin **Garena Direct → Service URL** at `https://your-droplet/v1` base (without `/v1` suffix in admin — client appends it).
+4. Point erosterz admin **Garena Direct → Service URL** at `https://your-droplet` (no trailing `/v1` — erosterz client appends it).
 
-**Security:** Rotate every secret that ever appeared in `_archive/` before production. Never log cookies, OTP secret, or full termgame responses.
+**Security:** Rotate every secret that ever appeared in legacy `_archive/` scripts before production. Never log cookies, OTP secret, or full termgame responses.
 
 ---
 
 ## Layout
 
 ```
-garena-service/
-  games.yaml           # Game registry (app_id, channel_id, …)
-  src/
-    main.py            # FastAPI routes
-    worker.py          # Background job loop + optional webhook
-    store.py           # SQLite job store
-    termgame/
-      topup.py         # pay/init + error mapping
-      otp.py           # TOTP helper
-  tests/
-    test_topup_errors.py
+games.yaml           # Game registry (app_id, channel_id, …)
+src/
+  main.py            # FastAPI routes
+  worker.py          # Background job loop + optional webhook
+  store.py           # SQLite job store
+  termgame/
+    topup.py         # pay/init + error mapping
+    otp.py           # TOTP helper
+tests/
+  test_topup_errors.py
 ```
-
-Legacy poll workers live in `../_archive/` — do not run them.
