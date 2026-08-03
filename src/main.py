@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from src.store import DuplicateJobError, JobStore
+from src.termgame.session import probe_termgame_session
 from src.worker import CreateOrderPayload, SessionPayload, worker_loop
 
 GAMES = yaml.safe_load((Path(__file__).resolve().parents[1] / "games.yaml").read_text())
@@ -48,7 +49,26 @@ async def health_get(_: None = Depends(require_bearer)):
 
 @app.post("/v1/health")
 async def health_post(body: HealthBody, _: None = Depends(require_bearer)):
-    return {"ok": True, "sessionProvided": body.session is not None, "shellBalance": None}
+    if body.session is None:
+        return {
+            "ok": True,
+            "sessionProvided": False,
+            "sessionValid": None,
+            "sessionExpired": None,
+            "shellBalance": None,
+        }
+
+    probe = await probe_termgame_session(
+        cookies=body.session.cookies,
+        headers=body.session.headers,
+    )
+    return {
+        "ok": True,
+        "sessionProvided": True,
+        "sessionValid": probe.session_valid,
+        "sessionExpired": probe.session_expired,
+        "shellBalance": probe.shell_balance,
+    }
 
 
 @app.post("/v1/orders", status_code=202)
