@@ -7,7 +7,13 @@ from typing import Any
 
 import yaml
 
-from src.termgame.http import build_cookie_header, is_datadome_or_forbidden, normalize_termgame_headers, summarize_raw
+from src.termgame.http import (
+    build_cookie_header,
+    is_datadome_or_forbidden,
+    normalize_termgame_headers,
+    summarize_raw,
+    termgame_http_client,
+)
 from src.termgame.topup import execute_topup_unit
 
 _GAMES = yaml.safe_load(
@@ -162,7 +168,7 @@ async def probe_termgame_session(
 
     last_body: dict[str, Any] | None = None
 
-    async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
+    async with termgame_http_client(timeout=15.0, follow_redirects=True) as client:
         for url in probe_urls:
             try:
                 response = await client.get(url, headers=req_headers)

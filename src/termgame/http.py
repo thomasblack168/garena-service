@@ -1,12 +1,36 @@
 from __future__ import annotations
 
+import os
 from typing import Any
+
+import httpx
 
 
 def build_cookie_header(cookies: dict[str, str], cookie_header: str | None = None) -> str:
     if cookie_header and cookie_header.strip():
         return cookie_header.strip().removeprefix("Cookie:").strip()
     return "; ".join(f"{k}={v}" for k, v in cookies.items())
+
+
+def infer_client_hints_from_user_agent(user_agent: str) -> dict[str, str]:
+    ua = user_agent or ""
+    mobile = any(token in ua for token in ("Android", "iPhone", "Mobile"))
+    if mobile:
+        return {
+            "sec-ch-ua-mobile": "?1",
+            "sec-ch-ua-platform": '"Android"' if "Android" in ua else '"iOS"',
+        }
+    return {
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"Windows"',
+    }
+
+
+def termgame_http_client(**kwargs: Any) -> httpx.AsyncClient:
+    proxy = os.environ.get("TERMGAME_HTTP_PROXY", "").strip()
+    if proxy:
+        kwargs.setdefault("proxy", proxy)
+    return httpx.AsyncClient(**kwargs)
 
 
 def normalize_termgame_headers(
@@ -27,9 +51,17 @@ def normalize_termgame_headers(
     out.setdefault("Accept", "application/json, text/plain, */*")
     out.setdefault("Accept-Language", "th-TH,th;q=0.9,en;q=0.8")
     out.setdefault("Origin", "https://termgame.com")
-    out.setdefault("sec-ch-ua", '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"')
-    out.setdefault("sec-ch-ua-mobile", "?0")
-    out.setdefault("sec-ch-ua-platform", '"Windows"')
+
+    ua = out.get("User-Agent", "")
+    hints = infer_client_hints_from_user_agent(ua)
+    if "sec-ch-ua-mobile" not in out:
+        out["sec-ch-ua-mobile"] = hints["sec-ch-ua-mobile"]
+    if "sec-ch-ua-platform" not in out:
+        out["sec-ch-ua-platform"] = hints["sec-ch-ua-platform"]
+    out.setdefault(
+        "sec-ch-ua",
+        '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
+    )
     out.setdefault("Sec-Fetch-Dest", "empty")
     out.setdefault("Sec-Fetch-Mode", "cors")
     out.setdefault("Sec-Fetch-Site", "same-origin")

@@ -41,7 +41,7 @@ async def execute_topup_unit(
 ) -> TopupResult:
     import httpx
 
-    from src.termgame.http import build_cookie_header, normalize_termgame_headers
+    from src.termgame.http import build_cookie_header, normalize_termgame_headers, termgame_http_client
     from src.termgame.otp import generate_otp
 
     otp = generate_otp(otp_secret)
@@ -73,7 +73,7 @@ async def execute_topup_unit(
         cookie_header=cookie_line,
     )
 
-    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
+    async with termgame_http_client(timeout=20.0, follow_redirects=True) as client:
         response = await client.post(
             "https://termgame.com/api/shop/pay/init",
             params={"region": "IN.TH", "language": "th"},
