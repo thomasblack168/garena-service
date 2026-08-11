@@ -7,7 +7,7 @@ from typing import Any
 
 import yaml
 
-from src.termgame.http import build_cookie_header, normalize_termgame_headers, summarize_raw
+from src.termgame.http import build_cookie_header, is_datadome_or_forbidden, normalize_termgame_headers, summarize_raw
 from src.termgame.topup import execute_topup_unit
 
 _GAMES = yaml.safe_load(
@@ -124,6 +124,13 @@ async def probe_termgame_session(
                 shell_balance=None,
                 raw=raw,
             )
+        if is_datadome_or_forbidden(raw):
+            return SessionProbeResult(
+                session_valid=False,
+                session_expired=False,
+                shell_balance=None,
+                raw=raw,
+            )
         if topup.ok or _session_ok_from_topup_failure(topup.failure_reason):
             return SessionProbeResult(
                 session_valid=True,
@@ -132,6 +139,13 @@ async def probe_termgame_session(
                 raw=raw,
             )
         detail = summarize_raw(raw)
+        if is_datadome_or_forbidden(raw):
+            return SessionProbeResult(
+                session_valid=False,
+                session_expired=False,
+                shell_balance=None,
+                raw=raw,
+            )
         if "datadome" in detail.lower():
             return SessionProbeResult(
                 session_valid=False,
