@@ -16,6 +16,7 @@ class SessionPayload(BaseModel):
     cookies: dict[str, str]
     headers: dict[str, str]
     otpSecret: str
+    cookieHeader: str | None = None
 
 
 class CreateOrderPayload(BaseModel):
@@ -56,6 +57,7 @@ async def process_job(job_ref: str) -> None:
             cookies=payload.session.cookies,
             headers=payload.session.headers,
             otp_secret=payload.session.otpSecret,
+            cookie_header=payload.session.cookieHeader,
         )
         if not result.ok:
             STORE.update_job(

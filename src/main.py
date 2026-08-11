@@ -9,6 +9,7 @@ from fastapi import Depends, FastAPI, Header, HTTPException
 from pydantic import BaseModel, Field
 
 from src.store import DuplicateJobError, JobStore
+from src.termgame.http import summarize_raw
 from src.termgame.session import probe_termgame_session
 from src.worker import CreateOrderPayload, SessionPayload, worker_loop
 
@@ -61,6 +62,8 @@ async def health_post(body: HealthBody, _: None = Depends(require_bearer)):
     probe = await probe_termgame_session(
         cookies=body.session.cookies,
         headers=body.session.headers,
+        cookie_header=body.session.cookieHeader,
+        otp_secret=body.session.otpSecret,
     )
     return {
         "ok": True,
@@ -68,6 +71,7 @@ async def health_post(body: HealthBody, _: None = Depends(require_bearer)):
         "sessionValid": probe.session_valid,
         "sessionExpired": probe.session_expired,
         "shellBalance": probe.shell_balance,
+        "probeDetail": summarize_raw(probe.raw),
     }
 
 

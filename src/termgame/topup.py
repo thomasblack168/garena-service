@@ -37,9 +37,11 @@ async def execute_topup_unit(
     headers: dict[str, str],
     otp_secret: str,
     session_id: str | None = None,
+    cookie_header: str | None = None,
 ) -> TopupResult:
     import httpx
 
+    from src.termgame.http import build_cookie_header, normalize_termgame_headers
     from src.termgame.otp import generate_otp
 
     otp = generate_otp(otp_secret)
@@ -63,16 +65,18 @@ async def execute_topup_unit(
     if packed_role_id is not None:
         json_data["packed_role_id"] = packed_role_id
 
-    req_headers = dict(headers)
-    req_headers["Referer"] = (
-        f"https://termgame.com/buy?app={app_id}&channel={channel_id}&item={item_id}"
+    referer = f"https://termgame.com/buy?app={app_id}&channel={channel_id}&item={item_id}"
+    cookie_line = build_cookie_header(cookies, cookie_header)
+    req_headers = normalize_termgame_headers(
+        headers,
+        referer=referer,
+        cookie_header=cookie_line,
     )
 
-    async with httpx.AsyncClient(timeout=20.0) as client:
+    async with httpx.AsyncClient(timeout=20.0, follow_redirects=True) as client:
         response = await client.post(
             "https://termgame.com/api/shop/pay/init",
             params={"region": "IN.TH", "language": "th"},
-            cookies=cookies,
             headers=req_headers,
             json=json_data,
         )

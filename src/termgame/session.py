@@ -2,7 +2,22 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+import yaml
+
+from src.termgame.http import build_cookie_header, normalize_termgame_headers, summarize_raw
+from src.termgame.topup import execute_topup_unit
+
+_GAMES = yaml.safe_load(
+    (Path(__file__).resolve().parents[2] / "games.yaml").read_text(encoding="utf-8"),
+)
+
+# Cheap ROV pack used only for session probe (invalid UID on purpose).
+_PROBE_GAME_KEY = "rov"
+_PROBE_ITEM_ID = "4587"
+_PROBE_PLAYER_ID = "1"
 
 
 @dataclass
@@ -57,14 +72,22 @@ def _response_requires_login(body: dict[str, Any]) -> bool:
     return "login" in message and "require" in message
 
 
+def _session_ok_from_topup_failure(reason: str | None) -> bool:
+    if not reason:
+        return False
+    return reason in ("invalid_player", "pack_limit", "error_params")
+
+
 async def probe_termgame_session(
     *,
     cookies: dict[str, str],
     headers: dict[str, str],
+    cookie_header: str | None = None,
+    otp_secret: str | None = None,
 ) -> SessionProbeResult:
     import httpx
 
-    if not cookies:
+    if not cookies and not (cookie_header and cookie_header.strip()):
         return SessionProbeResult(
             session_valid=False,
             session_expired=True,
@@ -72,9 +95,50 @@ async def probe_termgame_session(
             raw={"error": "missing_cookies"},
         )
 
-    req_headers = dict(headers)
-    req_headers.setdefault("Accept", "application/json, text/plain, */*")
-    req_headers.setdefault("Referer", "https://termgame.com/")
+    cookie_line = build_cookie_header(cookies, cookie_header)
+    req_headers = normalize_termgame_headers(
+        headers,
+        referer="https://termgame.com/",
+        cookie_header=cookie_line,
+    )
+
+    # Wallet endpoints are unreliable on termgame — probe via pay/init (real fulfillment path).
+    game = _GAMES.get(_PROBE_GAME_KEY)
+    if game:
+        topup = await execute_topup_unit(
+            app_id=int(game["app_id"]),
+            channel_id=int(game["channel_id"]),
+            packed_role_id=game.get("packed_role_id"),
+            item_id=_PROBE_ITEM_ID,
+            player_id=_PROBE_PLAYER_ID,
+            cookies=cookies,
+            headers=headers,
+            otp_secret=otp_secret or "JBSWY3DPEHPK3PXP",
+            cookie_header=cookie_line,
+        )
+        raw = topup.raw or {}
+        if topup.failure_reason == "session_expired" or _response_requires_login(raw):
+            return SessionProbeResult(
+                session_valid=False,
+                session_expired=True,
+                shell_balance=None,
+                raw=raw,
+            )
+        if topup.ok or _session_ok_from_topup_failure(topup.failure_reason):
+            return SessionProbeResult(
+                session_valid=True,
+                session_expired=False,
+                shell_balance=None,
+                raw=raw,
+            )
+        detail = summarize_raw(raw)
+        if "datadome" in detail.lower():
+            return SessionProbeResult(
+                session_valid=False,
+                session_expired=False,
+                shell_balance=None,
+                raw=raw,
+            )
 
     probe_urls = [
         "https://termgame.com/api/wallet/balance?region=IN.TH&language=th",
@@ -87,11 +151,7 @@ async def probe_termgame_session(
     async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
         for url in probe_urls:
             try:
-                response = await client.get(
-                    url,
-                    cookies=cookies,
-                    headers=req_headers,
-                )
+                response = await client.get(url, headers=req_headers)
             except Exception as exc:
                 last_body = {"error": "upstream_error", "detail": str(exc)[:200]}
                 continue
@@ -135,7 +195,7 @@ async def probe_termgame_session(
 
     return SessionProbeResult(
         session_valid=False,
-        session_expired=True,
+        session_expired=False,
         shell_balance=None,
         raw=last_body,
     )
