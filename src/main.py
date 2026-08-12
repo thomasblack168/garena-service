@@ -31,6 +31,11 @@ class HealthBody(BaseModel):
     session: SessionPayload | None = None
 
 
+class LoginTestBody(BaseModel):
+    email: str
+    password: str
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     import asyncio
@@ -72,6 +77,20 @@ async def health_post(body: HealthBody, _: None = Depends(require_bearer)):
         "sessionExpired": probe.session_expired,
         "shellBalance": probe.shell_balance,
         "probeDetail": summarize_raw(probe.raw),
+    }
+
+
+@app.post("/v1/login-test")
+async def login_test(body: LoginTestBody, _: None = Depends(require_bearer)):
+    from src.termgame.browser_login import test_login
+
+    result = await test_login(body.email, body.password)
+    return {
+        "ok": result.ok,
+        "finalUrl": result.final_url,
+        "cookieNames": result.cookie_names,
+        "bodySnippet": result.body_snippet,
+        "error": result.error,
     }
 
 
