@@ -1,9 +1,17 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import Any
 
-import httpx
+from curl_cffi.requests import AsyncSession
+
+# Chrome TLS/JA3 impersonation target for curl_cffi. termgame.com sits behind
+# Datadome, which fingerprints the TLS ClientHello + HTTP/2 frame ordering in
+# addition to cookies/UA. A plain httpx/OpenSSL client never matches a real
+# Chrome handshake no matter how correct the cookies are, so requests must be
+# made through curl_cffi's browser-impersonating transport instead.
+_IMPERSONATE_TARGET = "chrome124"
 
 
 def build_cookie_header(cookies: dict[str, str], cookie_header: str | None = None) -> str:
@@ -26,11 +34,19 @@ def infer_client_hints_from_user_agent(user_agent: str) -> dict[str, str]:
     }
 
 
-def termgame_http_client(**kwargs: Any) -> httpx.AsyncClient:
+def _chrome_major_version(user_agent: str) -> str:
+    match = re.search(r"Chrome/(\d+)", user_agent or "")
+    return match.group(1) if match else "124"
+
+
+def termgame_http_client(**kwargs: Any) -> AsyncSession:
     proxy = os.environ.get("TERMGAME_HTTP_PROXY", "").strip()
     if proxy:
         kwargs.setdefault("proxy", proxy)
-    return httpx.AsyncClient(**kwargs)
+    if "follow_redirects" in kwargs:
+        kwargs.setdefault("allow_redirects", kwargs.pop("follow_redirects"))
+    kwargs.setdefault("impersonate", _IMPERSONATE_TARGET)
+    return AsyncSession(**kwargs)
 
 
 def normalize_termgame_headers(
@@ -58,10 +74,11 @@ def normalize_termgame_headers(
         out["sec-ch-ua-mobile"] = hints["sec-ch-ua-mobile"]
     if "sec-ch-ua-platform" not in out:
         out["sec-ch-ua-platform"] = hints["sec-ch-ua-platform"]
-    out.setdefault(
-        "sec-ch-ua",
-        '"Google Chrome";v="131", "Chromium";v="131", "Not_A Brand";v="24"',
-    )
+    if "sec-ch-ua" not in out:
+        chrome_v = _chrome_major_version(ua)
+        out["sec-ch-ua"] = (
+            f'"Not_A Brand";v="24", "Chromium";v="{chrome_v}", "Google Chrome";v="{chrome_v}"'
+        )
     out.setdefault("Sec-Fetch-Dest", "empty")
     out.setdefault("Sec-Fetch-Mode", "cors")
     out.setdefault("Sec-Fetch-Site", "same-origin")

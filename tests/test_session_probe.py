@@ -77,7 +77,7 @@ def test_probe_session_ok_with_balance(monkeypatch):
             return False
 
     monkeypatch.setattr("src.termgame.session.execute_topup_unit", fake_topup)
-    monkeypatch.setattr("httpx.AsyncClient", lambda **kwargs: FakeClient())
+    monkeypatch.setattr("src.termgame.http.AsyncSession", lambda **kwargs: FakeClient())
 
     result = asyncio.run(
         probe_termgame_session(

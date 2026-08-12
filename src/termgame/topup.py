@@ -39,8 +39,6 @@ async def execute_topup_unit(
     session_id: str | None = None,
     cookie_header: str | None = None,
 ) -> TopupResult:
-    import httpx
-
     from src.termgame.http import build_cookie_header, normalize_termgame_headers, termgame_http_client
     from src.termgame.otp import generate_otp
 

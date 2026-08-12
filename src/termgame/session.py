@@ -91,8 +91,6 @@ async def probe_termgame_session(
     cookie_header: str | None = None,
     otp_secret: str | None = None,
 ) -> SessionProbeResult:
-    import httpx
-
     if not cookies and not (cookie_header and cookie_header.strip()):
         return SessionProbeResult(
             session_valid=False,
