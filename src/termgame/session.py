@@ -109,17 +109,27 @@ async def probe_termgame_session(
     # Wallet endpoints are unreliable on termgame — probe via pay/init (real fulfillment path).
     game = _GAMES.get(_PROBE_GAME_KEY)
     if game:
-        topup = await execute_topup_unit(
-            app_id=int(game["app_id"]),
-            channel_id=int(game["channel_id"]),
-            packed_role_id=game.get("packed_role_id"),
-            item_id=_PROBE_ITEM_ID,
-            player_id=_PROBE_PLAYER_ID,
-            cookies=cookies,
-            headers=headers,
-            otp_secret=otp_secret or "JBSWY3DPEHPK3PXP",
-            cookie_header=cookie_line,
-        )
+        try:
+            topup = await execute_topup_unit(
+                app_id=int(game["app_id"]),
+                channel_id=int(game["channel_id"]),
+                packed_role_id=game.get("packed_role_id"),
+                item_id=_PROBE_ITEM_ID,
+                player_id=_PROBE_PLAYER_ID,
+                cookies=cookies,
+                headers=headers,
+                otp_secret=otp_secret or "JBSWY3DPEHPK3PXP",
+                cookie_header=cookie_line,
+            )
+        except Exception as exc:
+            # Proxy/network failure (dead proxy session, DNS, timeout) — report
+            # cleanly instead of a 500 so the admin UI can show an actionable message.
+            return SessionProbeResult(
+                session_valid=False,
+                session_expired=False,
+                shell_balance=None,
+                raw={"error": "upstream_unreachable", "detail": str(exc)[:200]},
+            )
         raw = topup.raw or {}
         if topup.failure_reason == "session_expired" or _response_requires_login(raw):
             return SessionProbeResult(
