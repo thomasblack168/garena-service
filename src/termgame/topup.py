@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import logging
+import os
 from dataclasses import dataclass
 from typing import Any
+
+logger = logging.getLogger("garena-topup")
 
 
 @dataclass
@@ -71,6 +75,15 @@ async def execute_topup_unit(
         cookie_header=cookie_line,
     )
 
+    proxy_configured = bool(os.environ.get("TERMGAME_HTTP_PROXY", "").strip())
+    logger.info(
+        "pay/init request: proxy=%s cookie_keys=%s header_keys=%s ua=%s",
+        proxy_configured,
+        sorted(cookies.keys()),
+        sorted(k for k in req_headers if k.lower() != "cookie"),
+        req_headers.get("User-Agent", "")[:80],
+    )
+
     try:
         async with termgame_http_client(timeout=20.0, follow_redirects=True) as client:
             response = await client.post(
@@ -80,6 +93,7 @@ async def execute_topup_unit(
                 json=json_data,
             )
     except Exception as exc:
+        logger.error("pay/init request failed before a response arrived: %s: %s", type(exc).__name__, exc)
         # Proxy/network failure (tunnel down, DNS, timeout) — report cleanly
         # instead of raising, so callers (worker loop, session probe) never
         # crash on a dead upstream and can show an actionable message.
@@ -89,6 +103,18 @@ async def execute_topup_unit(
             failure_reason="upstream_unreachable",
             raw={"error": "upstream_unreachable", "detail": str(exc)[:200]},
         )
+
+    resp_headers = dict(response.headers)
+    datadome_set_cookie = "set-cookie" in {k.lower() for k in resp_headers} and "datadome" in response.text[:2000].lower()
+    logger.info(
+        "pay/init response: status=%s server=%s cf-ray=%s content-type=%s datadome_mentioned=%s body_snippet=%r",
+        response.status_code,
+        resp_headers.get("server") or resp_headers.get("Server"),
+        resp_headers.get("cf-ray") or resp_headers.get("Cf-Ray") or resp_headers.get("x-datadome") or resp_headers.get("X-DataDome"),
+        resp_headers.get("content-type") or resp_headers.get("Content-Type"),
+        datadome_set_cookie,
+        response.text[:500],
+    )
 
     try:
         body = response.json()

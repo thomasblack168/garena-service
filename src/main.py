@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -12,6 +13,16 @@ from src.store import DuplicateJobError, JobStore
 from src.termgame.http import summarize_raw
 from src.termgame.session import probe_termgame_session
 from src.worker import CreateOrderPayload, SessionPayload, worker_loop
+
+# Without this, the module-level loggers in topup.py/session.py/worker.py
+# have no handler attached and every logger.info()/error() call is silently
+# dropped -- stdout is captured by systemd -> journalctl, so this is the
+# whole diagnostic trail for a probe/order (proxy used, response status,
+# Datadome signals, etc.).
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
 
 GAMES = yaml.safe_load((Path(__file__).resolve().parents[1] / "games.yaml").read_text())
 STORE = JobStore(Path(__file__).resolve().parents[1] / "data" / "jobs.db")
