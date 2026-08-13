@@ -117,5 +117,16 @@ async def maybe_webhook(job_ref: str) -> None:
 async def worker_loop() -> None:
     while True:
         for job in STORE.list_accepted():
-            await process_job(job.ref)
+            try:
+                await process_job(job.ref)
+            except Exception as exc:
+                # A single job's unexpected failure must never take the whole
+                # background loop down with it -- that would silently stop
+                # *all* future orders until a manual service restart.
+                STORE.update_job(
+                    job.ref,
+                    status="failed",
+                    completed_units=0,
+                    failure_reason=f"worker_error: {str(exc)[:150]}",
+                )
         await asyncio.sleep(2)

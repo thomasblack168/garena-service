@@ -71,12 +71,23 @@ async def execute_topup_unit(
         cookie_header=cookie_line,
     )
 
-    async with termgame_http_client(timeout=20.0, follow_redirects=True) as client:
-        response = await client.post(
-            "https://termgame.com/api/shop/pay/init",
-            params={"region": "IN.TH", "language": "th"},
-            headers=req_headers,
-            json=json_data,
+    try:
+        async with termgame_http_client(timeout=20.0, follow_redirects=True) as client:
+            response = await client.post(
+                "https://termgame.com/api/shop/pay/init",
+                params={"region": "IN.TH", "language": "th"},
+                headers=req_headers,
+                json=json_data,
+            )
+    except Exception as exc:
+        # Proxy/network failure (tunnel down, DNS, timeout) — report cleanly
+        # instead of raising, so callers (worker loop, session probe) never
+        # crash on a dead upstream and can show an actionable message.
+        return TopupResult(
+            ok=False,
+            display_id=None,
+            failure_reason="upstream_unreachable",
+            raw={"error": "upstream_unreachable", "detail": str(exc)[:200]},
         )
 
     try:
