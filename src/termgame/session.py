@@ -131,6 +131,18 @@ async def probe_termgame_session(
                 raw={"error": "upstream_unreachable", "detail": str(exc)[:200]},
             )
         raw = topup.raw or {}
+        if topup.failure_reason == "upstream_unreachable":
+            # execute_topup_unit no longer raises for network-level failures
+            # (dead tunnel, DNS, timeout) -- it returns this failure_reason
+            # instead. Short-circuit here so the report is specific and we
+            # skip the slower probe_urls fallback loop below, which would
+            # just hit the same broken proxy three more times for nothing.
+            return SessionProbeResult(
+                session_valid=False,
+                session_expired=False,
+                shell_balance=None,
+                raw=raw,
+            )
         if topup.failure_reason == "session_expired" or _response_requires_login(raw):
             return SessionProbeResult(
                 session_valid=False,

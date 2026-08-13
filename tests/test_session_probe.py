@@ -51,6 +51,28 @@ def test_probe_session_ok_via_invalid_player(monkeypatch):
     assert result.session_expired is False
 
 
+def test_probe_reports_upstream_unreachable_without_raising(monkeypatch):
+    async def fake_topup(**kwargs):
+        return TopupResult(
+            ok=False,
+            display_id=None,
+            failure_reason="upstream_unreachable",
+            raw={"error": "upstream_unreachable", "detail": "Connection refused"},
+        )
+
+    monkeypatch.setattr("src.termgame.session.execute_topup_unit", fake_topup)
+
+    result = asyncio.run(
+        probe_termgame_session(
+            cookies={"mspid2": "abc"},
+            headers={"User-Agent": "test"},
+        ),
+    )
+    assert result.session_valid is False
+    assert result.session_expired is False
+    assert result.raw["error"] == "upstream_unreachable"
+
+
 def test_probe_session_ok_with_balance(monkeypatch):
     async def fake_topup(**kwargs):
         return TopupResult(
