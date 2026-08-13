@@ -5,7 +5,6 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from playwright.async_api import async_playwright
-from playwright_stealth import Stealth
 
 OAUTH_URL = (
     "https://authgop.garena.com/universal/oauth"
@@ -31,18 +30,7 @@ class LoginTestResult:
 
 async def test_login(email: str, password: str, *, proxy: str | None = None) -> LoginTestResult:
     proxy = proxy if proxy is not None else os.environ.get("TERMGAME_HTTP_PROXY", "").strip()
-    # Real headed browser (via Xvfb, see xvfb.service) instead of headless=True:
-    # removes an entire category of headless-detection signals that Datadome
-    # (and similar bot-detection vendors) check for. Combined with stealth
-    # patches below and --disable-blink-features=AutomationControlled, which
-    # otherwise sets navigator.webdriver=true and is trivially detectable.
-    launch_kwargs: dict[str, Any] = {
-        "headless": False,
-        "args": [
-            "--disable-blink-features=AutomationControlled",
-            "--no-sandbox",
-        ],
-    }
+    launch_kwargs: dict[str, Any] = {"headless": True}
     if proxy:
         launch_kwargs["proxy"] = {"server": proxy}
 
@@ -54,7 +42,6 @@ async def test_login(email: str, password: str, *, proxy: str | None = None) -> 
                 viewport={"width": 1366, "height": 900},
                 locale="th-TH",
             )
-            await Stealth().apply_stealth_async(context)
             page = await context.new_page()
 
             try:
