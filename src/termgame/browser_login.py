@@ -52,17 +52,8 @@ async def test_login(email: str, password: str, *, proxy: str | None = None) -> 
             await page.wait_for_timeout(1_200)
 
             try:
-                await page.screenshot(path="/tmp/login_debug_1_loaded.png")
-            except Exception:
-                pass
-
-            try:
                 await page.fill("input[type='text']", email, timeout=10_000)
                 await page.fill("input[type='password']", password, timeout=10_000)
-                try:
-                    await page.screenshot(path="/tmp/login_debug_2_filled.png")
-                except Exception:
-                    pass
                 await page.click("button[type='submit']", timeout=10_000)
             except Exception as exc:
                 return LoginTestResult(
@@ -72,10 +63,6 @@ async def test_login(email: str, password: str, *, proxy: str | None = None) -> 
                 )
 
             await page.wait_for_timeout(4_000)
-            try:
-                await page.screenshot(path="/tmp/login_debug_3_after_submit.png", full_page=True)
-            except Exception:
-                pass
 
             final_url = page.url
             body_text = ""
