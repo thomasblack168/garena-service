@@ -52,7 +52,7 @@ async def test_login(email: str, password: str, *, proxy: str | None = None) -> 
             await page.wait_for_timeout(1_200)
 
             try:
-                await page.screenshot(path="/home/garena/garena-service/debug/login_debug_1_loaded.png")
+                await page.screenshot(path="/tmp/login_debug_1_loaded.png")
             except Exception:
                 pass
 
@@ -60,7 +60,7 @@ async def test_login(email: str, password: str, *, proxy: str | None = None) -> 
                 await page.fill("input[type='text']", email, timeout=10_000)
                 await page.fill("input[type='password']", password, timeout=10_000)
                 try:
-                    await page.screenshot(path="/home/garena/garena-service/debug/login_debug_2_filled.png")
+                    await page.screenshot(path="/tmp/login_debug_2_filled.png")
                 except Exception:
                     pass
                 await page.click("button[type='submit']", timeout=10_000)
@@ -73,7 +73,7 @@ async def test_login(email: str, password: str, *, proxy: str | None = None) -> 
 
             await page.wait_for_timeout(4_000)
             try:
-                await page.screenshot(path="/home/garena/garena-service/debug/login_debug_3_after_submit.png", full_page=True)
+                await page.screenshot(path="/tmp/login_debug_3_after_submit.png", full_page=True)
             except Exception:
                 pass
 
