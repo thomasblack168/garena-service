@@ -6,11 +6,12 @@ from typing import Any
 
 from curl_cffi.requests import AsyncSession
 
-# Chrome TLS/JA3 impersonation target for curl_cffi. termgame.com sits behind
-# Datadome, which fingerprints the TLS ClientHello + HTTP/2 frame ordering in
-# addition to cookies/UA. A plain httpx/OpenSSL client never matches a real
-# Chrome handshake no matter how correct the cookies are, so requests must be
-# made through curl_cffi's browser-impersonating transport instead.
+# Chrome TLS/JA3 impersonation target for curl_cffi. Kept for realism/parity
+# with a real browser's TLS handshake, though the actual blocker turned out
+# to be a missing header (see normalize_termgame_headers below) -- confirmed
+# by A/B testing a real curl_cffi client with vs. without the x-csrf-token
+# header: identical TLS fingerprint, identical everything else, and adding
+# just that one header alone took every request from 403 to 200.
 _IMPERSONATE_TARGET = "chrome124"
 
 
@@ -18,6 +19,17 @@ def build_cookie_header(cookies: dict[str, str], cookie_header: str | None = Non
     if cookie_header and cookie_header.strip():
         return cookie_header.strip().removeprefix("Cookie:").strip()
     return "; ".join(f"{k}={v}" for k, v in cookies.items())
+
+
+def _extract_cookie_value(cookie_header: str, name: str) -> str | None:
+    for part in cookie_header.split(";"):
+        piece = part.strip()
+        if not piece:
+            continue
+        key, _, value = piece.partition("=")
+        if key.strip() == name:
+            return value.strip()
+    return None
 
 
 def infer_client_hints_from_user_agent(user_agent: str) -> dict[str, str]:
@@ -84,6 +96,18 @@ def normalize_termgame_headers(
     out.setdefault("Sec-Fetch-Site", "same-origin")
     out["Referer"] = referer
     out["Cookie"] = cookie_header
+
+    # termgame requires the CSRF token to be echoed back as a request header
+    # (double-submit pattern) -- their frontend reads it from the __csrf__
+    # cookie via JS and re-sends it as x-csrf-token on every mutating
+    # request. Without this, POST endpoints (pay/init etc.) reject with a
+    # bare, unbranded 403 regardless of session validity, IP, or TLS
+    # fingerprint -- this was the entire cause, confirmed by a controlled
+    # A/B test (identical request, only this header differed).
+    csrf_value = _extract_cookie_value(cookie_header, "__csrf__")
+    if csrf_value:
+        out["x-csrf-token"] = csrf_value
+
     return out
 
 
