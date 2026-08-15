@@ -3,6 +3,29 @@ import asyncio
 from src.termgame.topup import build_channel_data, execute_topup_unit, map_termgame_response
 
 
+def test_execute_topup_unit_fails_closed_when_player_login_returns_no_open_id(monkeypatch):
+    async def fake_player_id_login(**kwargs):
+        return None
+
+    monkeypatch.setattr("src.termgame.topup.player_id_login", fake_player_id_login)
+
+    result = asyncio.run(
+        execute_topup_unit(
+            app_id=100153,
+            channel_id=207070,
+            packed_role_id=772352,
+            item_id="11001",
+            player_id="1",
+            cookies={},
+            headers={},
+            otp_secret="JBSWY3DPEHPK3PXP",
+            needs_player_login=True,
+        )
+    )
+    assert result.ok is False
+    assert result.failure_reason == "invalid_player"
+
+
 def test_channel_data_empty_when_otp_not_needed():
     assert build_channel_data("123456", False, 109836560) == {}
 

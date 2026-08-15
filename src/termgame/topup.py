@@ -43,6 +43,44 @@ def map_termgame_response(body: dict[str, Any]) -> TopupResult:
     return TopupResult(ok=False, display_id=None, failure_reason=str(error), raw=body)
 
 
+async def player_id_login(
+    *,
+    app_id: int,
+    player_id: str,
+    cookies: dict[str, str],
+    headers: dict[str, str],
+    referer: str,
+    cookie_header: str | None = None,
+) -> str | None:
+    """Registers player_id as the topup target for this session/app before
+    pay/init. Legacy per-game scripts (rov/hai/undraw/deltaforce/freefire)
+    disagree on whether this is needed -- rov's script builds the payload
+    but never sends it, freefire's script never builds it at all, but
+    hai/undraw/deltaforce all call it and treat a missing open_id in the
+    response as an invalid player, before ever attempting pay/init. Returns
+    the resolved open_id, or None if termgame doesn't recognize player_id
+    for this app_id."""
+    from src.termgame.http import build_cookie_header, normalize_termgame_headers, termgame_http_client
+
+    cookie_line = build_cookie_header(cookies, cookie_header)
+    req_headers = normalize_termgame_headers(headers, referer=referer, cookie_header=cookie_line)
+
+    async with termgame_http_client(timeout=15.0, follow_redirects=True) as client:
+        response = await client.post(
+            "https://termgame.com/api/auth/player_id_login",
+            headers=req_headers,
+            json={"app_id": app_id, "login_id": str(player_id)},
+        )
+    try:
+        body = response.json()
+    except Exception:
+        return None
+    if not isinstance(body, dict):
+        return None
+    open_id = body.get("open_id")
+    return str(open_id) if open_id else None
+
+
 async def execute_topup_unit(
     *,
     app_id: int,
@@ -54,6 +92,7 @@ async def execute_topup_unit(
     headers: dict[str, str],
     otp_secret: str,
     needs_otp: bool = False,
+    needs_player_login: bool = False,
     garena_uid: int | None = None,
     session_id: str | None = None,
     cookie_header: str | None = None,
@@ -64,6 +103,24 @@ async def execute_topup_unit(
     otp = generate_otp(otp_secret)
     mspid2 = session_id or cookies.get("mspid2", "")
     channel_data = build_channel_data(otp, needs_otp, garena_uid)
+
+    if needs_player_login:
+        login_referer = f"https://termgame.com/buy?app={app_id}&channel={channel_id}&item={item_id}"
+        open_id = await player_id_login(
+            app_id=app_id,
+            player_id=player_id,
+            cookies=cookies,
+            headers=headers,
+            referer=login_referer,
+            cookie_header=cookie_header,
+        )
+        if not open_id:
+            return TopupResult(
+                ok=False,
+                display_id=None,
+                failure_reason="invalid_player",
+                raw={"error": "player_id_login_failed", "player_id": player_id, "app_id": app_id},
+            )
 
     json_data: dict[str, Any] = {
         "app_id": app_id,

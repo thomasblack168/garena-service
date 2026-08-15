@@ -1,16 +1,29 @@
 # needs_otp: true means pay/init requires channel_data.otp_code (TOTP from the
 # merchant's own otp_secret) + channel_data.garena_uid (the merchant account's
 # own Garena uid, from GARENA_MERCHANT_UID env var) or termgame rejects the
-# request with result=error_params. The legacy per-game scripts
-# (Garena-erosterz/_archive/<GAME>/bin/topup.py) had rov sending empty
-# channel_data, and that matched live behavior for weeks -- but on
-# 2026-08-15 rov started failing every order with error_params using the
-# exact same request shape that had worked minutes earlier, while sending
-# otp_code+garena_uid fixed it immediately. So this isn't a fixed per-game
-# property the way the legacy scripts implied -- termgame can apparently
-# start requiring the OTP step-up for an account/game pair that didn't
-# need it before. All 5 games are needs_otp: true for now; don't assume a
-# game can safely go back to false just because it isn't needed today.
+# request with result=error_params. This isn't a fixed per-game property --
+# on 2026-08-15 rov started failing every order with error_params using the
+# exact request shape that had worked minutes earlier, and sending
+# otp_code+garena_uid fixed it immediately. All 5 games are needs_otp: true
+# for now; don't assume a game can safely go back to false just because it
+# isn't needed today.
+#
+# needs_player_login: true means POST /api/auth/player_id_login (with
+# {app_id, login_id: player_id}) must be called and must return a non-empty
+# open_id BEFORE pay/init, or termgame rejects the topup as invalid_id /
+# not_allowed_to_topup_to_player even with an otherwise-correct request.
+# Confirmed from the actual production orchestrator scripts
+# (Garena-erosterz/_archive/<GAME>/mainNew*.py -- NOT the bin/topup.py
+# helper files, which are stale/inconsistent copies): rov's script builds
+# the login payload but never sends it (dead code) and freefire's script
+# never builds it at all -- both work fine without this step. hai, undraw,
+# and deltaforce's scripts all send it and explicitly bail out when the
+# response has no open_id/valid username, before ever attempting pay/init.
+#
+# packed_role_id for hai/undraw was wrongly copied from the stale
+# bin/topup.py helper files as 0 on 2026-08-15's first otp fix pass --
+# mainNew.py (the actual production script) uses different non-zero values
+# for both. Fixed here from mainNew.py directly.
 rov:
   legacy_game_id: 180
   app_id: 100055
@@ -29,15 +42,18 @@ deltaforce:
   channel_id: 207070
   packed_role_id: 14336
   needs_otp: true
+  needs_player_login: true
 hai:
   legacy_game_id: 1712
   app_id: 100153
   channel_id: 207070
-  packed_role_id: 0
+  packed_role_id: 772352
   needs_otp: true
+  needs_player_login: true
 undraw:
   legacy_game_id: 1714
   app_id: 100105
   channel_id: 207070
-  packed_role_id: 0
+  packed_role_id: 7864320
   needs_otp: true
+  needs_player_login: true

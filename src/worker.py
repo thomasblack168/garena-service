@@ -61,6 +61,7 @@ async def process_job(job_ref: str) -> None:
             headers=payload.session.headers,
             otp_secret=payload.session.otpSecret,
             needs_otp=bool(game.get("needs_otp", False)),
+            needs_player_login=bool(game.get("needs_player_login", False)),
             garena_uid=merchant_uid,
             cookie_header=payload.session.cookieHeader,
         )
