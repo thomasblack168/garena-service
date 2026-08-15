@@ -74,9 +74,12 @@ async def player_id_login(
     try:
         body = response.json()
     except Exception:
+        logger.error("player_id_login: non-JSON response status=%s text=%s", response.status_code, response.text[:300])
         return None
     if not isinstance(body, dict):
+        logger.error("player_id_login: unexpected body shape: %r", body)
         return None
+    logger.info("player_id_login response: app_id=%s player_id=%s body=%s", app_id, player_id, body)
     open_id = body.get("open_id")
     return str(open_id) if open_id else None
 
