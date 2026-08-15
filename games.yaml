@@ -1,3 +1,10 @@
+# needs_otp: true means pay/init requires channel_data.otp_code (TOTP from the
+# merchant's own otp_secret) + channel_data.garena_uid (the merchant account's
+# own Garena uid, from GARENA_MERCHANT_UID env var) or termgame rejects the
+# request with result=error_params. Confirmed per-game from the legacy
+# per-game scripts (Garena-erosterz/_archive/<GAME>/bin/topup.py) -- rov's
+# channel_data is empty and works without it; freefire/deltaforce/hai/undraw
+# all send otp_code + garena_uid.
 rov:
   legacy_game_id: 180
   app_id: 100055
@@ -7,15 +14,20 @@ freefire:
   legacy_game_id: 179
   app_id: 100067
   channel_id: 207070
+  needs_otp: true
 deltaforce:
   legacy_game_id: 1713
   app_id: 100151
   channel_id: 207070
+  packed_role_id: 14336
+  needs_otp: true
 hai:
   legacy_game_id: 1712
   app_id: 100153
   channel_id: 207070
+  needs_otp: true
 undraw:
   legacy_game_id: 1714
   app_id: 100105
   channel_id: 207070
+  needs_otp: true

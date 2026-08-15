@@ -47,6 +47,9 @@ async def process_job(job_ref: str) -> None:
     completed = 0
     last_display: str | None = None
 
+    merchant_uid_raw = os.environ.get("GARENA_MERCHANT_UID", "").strip()
+    merchant_uid = int(merchant_uid_raw) if merchant_uid_raw.isdigit() else None
+
     for _ in range(payload.quantity):
         result = await execute_topup_unit(
             app_id=int(game["app_id"]),
@@ -57,6 +60,8 @@ async def process_job(job_ref: str) -> None:
             cookies=payload.session.cookies,
             headers=payload.session.headers,
             otp_secret=payload.session.otpSecret,
+            needs_otp=bool(game.get("needs_otp", False)),
+            garena_uid=merchant_uid,
             cookie_header=payload.session.cookieHeader,
         )
         if not result.ok:

@@ -16,6 +16,19 @@ class TopupResult:
     raw: dict[str, Any] | None = None
 
 
+def build_channel_data(otp: str, needs_otp: bool, garena_uid: int | None) -> dict[str, Any]:
+    """Some games (freefire, deltaforce, hai, undraw) reject pay/init with
+    result=error_params unless channel_data carries the merchant's own TOTP
+    code + Garena account uid -- rov works fine with channel_data empty.
+    See games.yaml needs_otp comment for how this was confirmed per game."""
+    if not needs_otp:
+        return {}
+    data: dict[str, Any] = {"otp_code": str(otp)}
+    if garena_uid is not None:
+        data["garena_uid"] = garena_uid
+    return data
+
+
 def map_termgame_response(body: dict[str, Any]) -> TopupResult:
     if body.get("error") == "error_require_login":
         return TopupResult(ok=False, display_id=None, failure_reason="session_expired", raw=body)
@@ -40,6 +53,8 @@ async def execute_topup_unit(
     cookies: dict[str, str],
     headers: dict[str, str],
     otp_secret: str,
+    needs_otp: bool = False,
+    garena_uid: int | None = None,
     session_id: str | None = None,
     cookie_header: str | None = None,
 ) -> TopupResult:
@@ -48,13 +63,14 @@ async def execute_topup_unit(
 
     otp = generate_otp(otp_secret)
     mspid2 = session_id or cookies.get("mspid2", "")
+    channel_data = build_channel_data(otp, needs_otp, garena_uid)
 
     json_data: dict[str, Any] = {
         "app_id": app_id,
         "channel_id": channel_id,
         "service": "pc",
         "item_id": int(item_id),
-        "channel_data": {},
+        "channel_data": channel_data,
         "player_id": str(player_id),
         "revamp_experiment": {
             "session_id": str(mspid2),
@@ -129,5 +145,4 @@ async def execute_topup_unit(
     if not isinstance(body, dict):
         return TopupResult(ok=False, display_id=None, failure_reason="upstream_error", raw={"body": body})
 
-    _ = otp  # reserved for pay step when enabled
     return map_termgame_response(body)

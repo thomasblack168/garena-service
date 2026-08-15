@@ -1,6 +1,21 @@
 import asyncio
 
-from src.termgame.topup import execute_topup_unit, map_termgame_response
+from src.termgame.topup import build_channel_data, execute_topup_unit, map_termgame_response
+
+
+def test_channel_data_empty_when_otp_not_needed():
+    assert build_channel_data("123456", False, 109836560) == {}
+
+
+def test_channel_data_includes_otp_and_uid_when_needed():
+    assert build_channel_data("123456", True, 109836560) == {
+        "otp_code": "123456",
+        "garena_uid": 109836560,
+    }
+
+
+def test_channel_data_omits_uid_when_unset():
+    assert build_channel_data("123456", True, None) == {"otp_code": "123456"}
 
 
 def test_maps_error_require_login():
