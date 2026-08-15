@@ -14,6 +14,7 @@ freefire:
   legacy_game_id: 179
   app_id: 100067
   channel_id: 207070
+  packed_role_id: 0
   needs_otp: true
 deltaforce:
   legacy_game_id: 1713
@@ -25,9 +26,11 @@ hai:
   legacy_game_id: 1712
   app_id: 100153
   channel_id: 207070
+  packed_role_id: 0
   needs_otp: true
 undraw:
   legacy_game_id: 1714
   app_id: 100105
   channel_id: 207070
+  packed_role_id: 0
   needs_otp: true
