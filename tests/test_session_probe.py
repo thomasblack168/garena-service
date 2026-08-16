@@ -39,7 +39,11 @@ def test_probe_session_ok_via_invalid_player(monkeypatch):
             raw={"result": "error_params"},
         )
 
+    async def fake_fetch_shell_balance(**kwargs):
+        return 4200.0
+
     monkeypatch.setattr("src.termgame.session.execute_topup_unit", fake_topup)
+    monkeypatch.setattr("src.termgame.session._fetch_shell_balance", fake_fetch_shell_balance)
 
     result = asyncio.run(
         probe_termgame_session(
@@ -49,6 +53,57 @@ def test_probe_session_ok_via_invalid_player(monkeypatch):
     )
     assert result.session_valid is True
     assert result.session_expired is False
+    assert result.shell_balance == 4200.0
+
+
+def test_fetch_shell_balance_parses_oauth_shell_balance(monkeypatch):
+    from src.termgame.session import _fetch_shell_balance
+
+    class FakeResponse:
+        def json(self):
+            return {"oauth": {"shell_balance": 1234.5, "username": "Erosterz-"}}
+
+    class FakeClient:
+        async def get(self, *args, **kwargs):
+            return FakeResponse()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr("src.termgame.http.AsyncSession", lambda **kwargs: FakeClient())
+
+    balance = asyncio.run(
+        _fetch_shell_balance(cookies={"mspid2": "abc"}, headers={"User-Agent": "test"}, cookie_header=None),
+    )
+    assert balance == 1234.5
+
+
+def test_fetch_shell_balance_none_when_oauth_missing(monkeypatch):
+    from src.termgame.session import _fetch_shell_balance
+
+    class FakeResponse:
+        def json(self):
+            return {"oauth": None}
+
+    class FakeClient:
+        async def get(self, *args, **kwargs):
+            return FakeResponse()
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return False
+
+    monkeypatch.setattr("src.termgame.http.AsyncSession", lambda **kwargs: FakeClient())
+
+    balance = asyncio.run(
+        _fetch_shell_balance(cookies={"mspid2": "abc"}, headers={"User-Agent": "test"}, cookie_header=None),
+    )
+    assert balance is None
 
 
 def test_probe_reports_upstream_unreachable_without_raising(monkeypatch):

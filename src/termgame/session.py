@@ -69,6 +69,51 @@ def _parse_shell_balance(body: dict[str, Any]) -> float | None:
     return None
 
 
+async def _fetch_shell_balance(
+    *,
+    cookies: dict[str, str],
+    headers: dict[str, str],
+    cookie_header: str | None,
+) -> float | None:
+    """GET /api/auth/get_user_info/multi -> oauth.shell_balance. This is the
+    endpoint the legacy per-account monitor (checkPayment.py) polled
+    successfully every 6 minutes for a long time -- unlike the
+    /api/wallet/* endpoints below (which the comment above them already
+    notes are unreliable), this one is proven. Read-only, no mutation, so
+    it's low-risk to call on every health probe."""
+    cookie_line = build_cookie_header(cookies, cookie_header)
+    req_headers = normalize_termgame_headers(
+        headers,
+        referer="https://termgame.com/",
+        cookie_header=cookie_line,
+    )
+    try:
+        async with termgame_http_client(timeout=15.0, follow_redirects=True) as client:
+            response = await client.get(
+                "https://termgame.com/api/auth/get_user_info/multi",
+                headers=req_headers,
+            )
+        body = response.json()
+    except Exception:
+        return None
+    if not isinstance(body, dict):
+        return None
+    oauth = body.get("oauth")
+    if not isinstance(oauth, dict):
+        return None
+    balance = oauth.get("shell_balance")
+    if isinstance(balance, (int, float)):
+        return float(balance)
+    if isinstance(balance, str):
+        cleaned = re.sub(r"[^\d.]", "", balance)
+        if cleaned:
+            try:
+                return float(cleaned)
+            except ValueError:
+                return None
+    return None
+
+
 def _response_requires_login(body: dict[str, Any]) -> bool:
     if body.get("error") == "error_require_login":
         return True
@@ -158,10 +203,15 @@ async def probe_termgame_session(
                 raw=raw,
             )
         if topup.ok or _session_ok_from_topup_failure(topup.failure_reason):
+            balance = await _fetch_shell_balance(
+                cookies=cookies,
+                headers=headers,
+                cookie_header=cookie_header,
+            )
             return SessionProbeResult(
                 session_valid=True,
                 session_expired=False,
-                shell_balance=None,
+                shell_balance=balance,
                 raw=raw,
             )
         detail = summarize_raw(raw)
